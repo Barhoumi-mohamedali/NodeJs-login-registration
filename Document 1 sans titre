@@ -1,0 +1,131 @@
+CREATE TABLE users(id_user INT NOT NULL AUTO_INCREMENT, pseudo VARCHAR(20) NOT NULL,password VARCHAR(20) NOT NULL ,PRIMARY KEY (id_user));
+
+
+CREATE TABLE url (id_url INT  NOT NULL  AUTO_INCREMENT ,url VARCHAR(20) NOT NULL , PRIMARY_KEY(id_url),FOREIGN KEY(id_user) REFERENCES users(id_user));
+
+
+INSERT INTO `liaison_services_url_user` (`id_services`, `id_url`, `id_user`) VALUES
+
+(2, 1, 12);
+
+INSERT INTO url (`id_url`, `url`) VALUES (1, 'test');
+
+ALTER TABLE url ADD id SMALLINT UNSIGNED NOT NULL;
+ALTER TABLE url ADD CONSTRAINT fk_id FOREIGN KEY (id) REFERENCES  utilisateurs (id);
+
+ALTER TABLE url ADD FOREIGN KEY (id) REFERENCES utilisateurs(id) ON UPDATE CASCADE ;
+
+INSERT INTO utilisateurs (pseudo ,mail, password  ,url) VALUES ('maher', 'email@mail', 'maher', 'testurl');
+
+​ALTER TABLE url ADD COLUMN id INT NOT NULL;
+
+ALTER TABLE url
+ADD FOREIGN KEY (id) REFERENCES utilisateurs(id);
+
+ALTER TABLE url
+ADD COLUMN id INT NOT NULL,
+ADD FOREIGN KEY (id) REFERENCES utilisateurs(id);
+
+ALTER TABLE `utilisateurs` DROP COLUMN `url`;
+
+var LocalStrategy = require("passport-local").Strategy;
+
+var mysql = require('mysql');
+var bcrypt = require('bcrypt-nodejs');
+var dbconfig = require('./database');
+var connection = mysql.createConnection(dbconfig.connection );
+
+connection.query('USE ' + dbconfig.database);
+
+module.exports = function(passport) {
+ passport.serializeUser(function(user, done){
+  done(null, user.id);
+ });
+
+ passport.deserializeUser(function(id, done){
+  connection.query("SELECT * FROM users WHERE id = ? ", [id],
+   function(err, rows){
+    done(err, rows[0]);
+   });
+ });
+
+ passport.use(
+  'local-signup',
+  new LocalStrategy({
+   usernameField : 'pseudo',
+   passwordField: 'password',
+   urlField: 'url',
+   passReqToCallback: true
+  },
+  function(req, username, password, url , done){
+   connection.query("SELECT * FROM users WHERE pseudo = ? ", 
+  
+ [username], function(err, rows){
+
+    if(err)
+     return done(err);
+    if(rows.length){
+
+     return done(null, false, req.flash('signupMessage', 'That is already taken'));
+
+    }else{
+     var newUserMysql = {
+      username: username,
+      password: bcrypt.hashSync(password, null, null),
+      url : url 
+     };
+
+     var insertQuery = "INSERT INTO users (pseudo, password) values (?, ?)";
+     var insertQuery2 = "INSERT INTO url (url,user_id) values (url,LAST_INSERT_ID())";
+
+    //  var insert1 = [newUserMysql.username, newUserMysql.password,newUserMysql.url];
+    // var insert2 = [newUserMysql.url];
+     
+  /*  var first_sql = mysql.pool.query(sql, insert1, function(error, results, fields){
+        if(error){
+                res.write(JSON.stringify(error));
+                        res.end();
+
+
+        }else {
+            var second_sql = mysql.pool.query(sql2, insert2, function(error, results, fields){
+                if(error){
+                    res.write(JSON.stringify(error));
+                    res.end();
+                }
+    }); */
+      connection.query(insertQuery, [newUserMysql.username, newUserMysql.password,newUserMysql.url],
+      function(err, rows){
+
+       newUserMysql.id = rows.insertId;
+
+      return done(null, newUserMysql);
+      });
+    }
+   });
+  }) 
+ );
+
+ passport.use(
+  'local-login',
+  new LocalStrategy({
+   usernameField : 'pseudo',
+   passwordField: 'password',
+   passReqToCallback: true
+  },
+  function(req, username, password, done){
+   connection.query("SELECT * FROM users WHERE pseudo = ? ", [username],
+   function(err, rows){
+    if(err)
+     return done(err);
+    if(!rows.length){
+     return done(null, false, req.flash('loginMessage', 'No User Found'));
+    }
+    if(!bcrypt.compareSync(password, rows[0].password))
+     return done(null, false, req.flash('loginMessage', 'Wrong Password'));
+
+    return done(null, rows[0]);
+   });
+  })
+ );
+};
